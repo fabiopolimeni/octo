@@ -6,8 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "4.4.11"
+anyhow = "1.0.77"
+async-trait = "0.1.75"
+clap = { version = "4.4.11", features = ["derive"] }
 crossterm = "0.27.0"
-reqwest = "0.11.23"
+reqwest = { version = "0.11.23", features = ["json"] }
 rustyline = "13.0.0"
-tokio = "1.35.1"
+serde = { version = "1.0.193", features = ["derive"] }
+tokio = { version = "1.35.1", features = ["full"] }
