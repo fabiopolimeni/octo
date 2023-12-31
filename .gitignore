@@ -20,3 +20,6 @@ Cargo.lock
 
 # Ingnore local environment variables
 .cargo/
+
+# Ignore .vscode/launch.json
+.vscode/launch.json
