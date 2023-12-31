@@ -19,9 +19,6 @@
                     "kind": "bin"
                 }
             },
-						"env": {
-							"OPENAI_API_KEY": "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"
-						},
             "args": [],
             "cwd": "${workspaceFolder}"
         },
@@ -41,9 +38,6 @@
                     "kind": "bin"
                 }
             },
-						"env": {
-							"OPENAI_API_KEY": "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"
-						},
             "args": [],
             "cwd": "${workspaceFolder}"
         }
