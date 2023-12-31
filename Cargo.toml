@@ -1,7 +1,9 @@
 [package]
-name = "octo-garbanzo"
-version = "0.1.0"
+name = "octo"
+version = "0.0.2"
 edition = "2021"
+authors = ["Fabio Polimeni"]
+description = "A REPL chat for LLM written in Rust"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
