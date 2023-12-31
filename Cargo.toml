@@ -13,4 +13,5 @@ crossterm = "0.27.0"
 reqwest = { version = "0.11.23", features = ["json"] }
 rustyline = "13.0.0"
 serde = { version = "1.0.193", features = ["derive"] }
+strum = { version = "0.25", features = ["derive"] }
 tokio = { version = "1.35.1", features = ["full"] }

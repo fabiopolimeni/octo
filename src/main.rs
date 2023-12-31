@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::io::{self, Write};
 
 mod chat;
@@ -42,7 +44,7 @@ async fn main() -> Result<()> {
         &opts
             .service
             .unwrap_or("https://api.openai.com/v1/chat/completions".to_string()),
-        &opts.model.unwrap_or("davinci".to_string()),
+        &opts.model.unwrap_or("gpt-3.5-turbo".to_string()),
     );
 
     writeln!(
@@ -61,7 +63,7 @@ async fn main() -> Result<()> {
             break;
         } else {
             execute!(stdout, cursor::SavePosition)?;
-            writeln!(stdout, "\n{}: {}", "󱚠", "Thinking...".italic())?;
+            writeln!(stdout, "\n{}", "Thinking...".italic())?;
 
             // Assume the worst, prepare terminal style for the error.
             // Because we are not explicitelly handling errors, anything
@@ -72,7 +74,7 @@ async fn main() -> Result<()> {
                 style::SetForegroundColor(style::Color::Red)
             )?;
 
-            let response = chat.prompt(&input).await?;
+            let response = chat.message(chat::Role::User, &input).await?;
 
             // No errors, reset terminal style to print out the response message
             execute!(
@@ -83,7 +85,7 @@ async fn main() -> Result<()> {
             )?;
 
             // Print out the response
-            writeln!(stdout, "\n{}: {}", "󱚠", response.italic().blue())?;
+            writeln!(stdout, "\n{}\n", response.italic().blue())?;
         }
     }
 
