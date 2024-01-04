@@ -20,13 +20,18 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Opts {
-    /// Service endpoint
+    /// URL service endpoint
     #[arg(short, long)]
-    service: Option<String>,
+    url: Option<String>,
 
     /// Model name
     #[arg(short, long)]
     model: Option<String>,
+
+    /// Whether using streaming for a better UX
+    /// FIXME: This should exist or not, not being a boolean
+    #[arg(short, long)]
+    stream: bool,
 }
 
 #[tokio::main]
@@ -42,7 +47,7 @@ async fn main() -> Result<()> {
     // Instantiate the Chat implementation
     let mut chat = OpenAI::new(
         &opts
-            .service
+            .url
             .unwrap_or("https://api.openai.com/v1/chat/completions".to_string()),
         &opts.model.unwrap_or("gpt-3.5-turbo".to_string()),
     );
@@ -51,19 +56,21 @@ async fn main() -> Result<()> {
         stdout,
         "{}{}",
         style::Attribute::Bold,
-        "Welcome to Octo Garbanzo!".green()
+        "Welcome to Octo!".green()
     )?;
-
-    execute!(stdout, style::SetAttribute(style::Attribute::Reset))?;
 
     // Loop through user input
     loop {
-        let input = rl.readline(": ")?;
+        execute!(stdout, style::SetAttribute(style::Attribute::Reset))?;
+        let input = rl.readline("\n: ")?;
         if input == "/exit" || input == "/quit" {
             break;
         } else {
+            writeln!(stdout, "")?;
             execute!(stdout, cursor::SavePosition)?;
-            writeln!(stdout, "\n{}", "Thinking...".italic())?;
+
+            // FIXME: Using animated waiting
+            writeln!(stdout, "{}", "Thinking...".italic().blue())?;
 
             // Assume the worst, prepare terminal style for the error.
             // Because we are not explicitelly handling errors, anything
@@ -74,18 +81,47 @@ async fn main() -> Result<()> {
                 style::SetForegroundColor(style::Color::Red)
             )?;
 
-            let response = chat.message(chat::Role::User, &input).await?;
+            if opts.stream {
+                let _ = chat
+                    .stream(chat::Role::User, &input, |chunk, what| {
+                        match what {
+                            chat::What::Start => {
+                                execute!(
+                                    &stdout,
+                                    cursor::RestorePosition,
+                                    terminal::Clear(terminal::ClearType::FromCursorDown),
+                                    style::SetAttribute(style::Attribute::Reset)
+                                )
+                                .unwrap();
+                            }
+                            chat::What::Chunk => {
+                                // Append text response
+                                write!(&stdout, "{}", chunk.italic().blue()).unwrap();
 
-            // No errors, reset terminal style to print out the response message
-            execute!(
-                stdout,
-                cursor::RestorePosition,
-                terminal::Clear(terminal::ClearType::FromCursorDown),
-                style::SetAttribute(style::Attribute::Reset)
-            )?;
+                                // Flush stdout after each chunk.
+                                io::stdout().flush().unwrap();
+                            }
+                            chat::What::Stop => {
+                                writeln!(&stdout, "").unwrap();
+                            }
+                            _ => {}
+                        }
+                    })
+                    .await?;
+            } else {
+                let response = chat.message(chat::Role::User, &input).await?;
 
-            // Print out the response
-            writeln!(stdout, "\n{}\n", response.italic().blue())?;
+                // No errors, reset terminal style to print out the response message
+                execute!(
+                    stdout,
+                    cursor::RestorePosition,
+                    terminal::Clear(terminal::ClearType::FromCursorDown),
+                    style::SetAttribute(style::Attribute::Reset)
+                )?;
+
+                // Print out the response
+                writeln!(stdout, "\n{}\n", response.italic().blue())?;
+            }
         }
     }
 

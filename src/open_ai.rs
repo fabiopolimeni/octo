@@ -1,12 +1,15 @@
-use crate::chat::{Chat, Role};
+use crate::chat::{Chat, Role, What};
 
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::AddAssign};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use reqwest::Client;
+use reqwest_eventsource::{Event, EventSource};
 use serde::{Deserialize, Serialize};
+use serde_json;
 
 use async_trait::async_trait;
+use tokio_stream::StreamExt;
 
 #[derive(Deserialize, Debug)]
 struct Logprob {
@@ -43,6 +46,7 @@ struct Function {
 #[derive(Deserialize, Serialize, Debug)]
 struct ToolCall {
     id: String,
+
     #[serde(rename = "type")]
     type_: String,
     function: Function,
@@ -51,19 +55,25 @@ struct ToolCall {
 #[derive(Deserialize, Debug)]
 struct Choice {
     index: i64,
-    message: Message,
+
+    #[serde(alias = "delta")]
+    #[serde(alias = "message")]
+    reply: Reply,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     logprobs: Option<Logprobs>,
-    finish_reason: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    finish_reason: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-struct Message {
+struct Reply {
     /// The role of the messages author
-    role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    role: Option<String>,
 
-    /// The contents of the message.
+    /// The content of the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     content: Option<String>,
 
@@ -114,7 +124,11 @@ enum Response {
         created: i64,
         model: String,
         choices: Vec<Choice>,
-        usage: Usage,
+
+        #[serde(skip_serializing_if = "Option::is_none")]
+        usage: Option<Usage>,
+
+        #[serde(skip_serializing_if = "Option::is_none")]
         system_fingerprint: Option<String>,
     },
 }
@@ -135,7 +149,7 @@ struct ResponseFormat {
 #[derive(Deserialize, Serialize, Debug)]
 struct Request {
     /// A list of messages comprising the conversation so far
-    messages: Vec<Message>,
+    messages: Vec<Reply>,
 
     /// The ID of the model to use for completion
     model: String,
@@ -259,7 +273,7 @@ impl Default for Request {
 
 pub struct OpenAI {
     client: Client,
-    url: String,
+    url: reqwest::Url,
     model: String,
 }
 
@@ -268,7 +282,7 @@ impl OpenAI {
         let client = Client::new();
         OpenAI {
             client,
-            url: url.to_string(),
+            url: url.parse().unwrap(),
             model: model.to_string(),
         }
     }
@@ -278,8 +292,8 @@ impl OpenAI {
 impl Chat for OpenAI {
     async fn message(&mut self, role: Role, message: &str) -> Result<String> {
         let request = Request {
-            messages: vec![Message {
-                role: role.to_string().to_lowercase(),
+            messages: vec![Reply {
+                role: Some(role.to_string().to_lowercase()),
                 content: Some(message.to_string()),
                 name: None,
                 tool_calls: None,
@@ -292,26 +306,98 @@ impl Chat for OpenAI {
         let bearer_token = std::env::var("OPENAI_API_KEY")?;
 
         // Make POST request
-        let response = self
+        let builder = self
             .client
             .post(self.url.clone())
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", bearer_token))
-            .json(&request)
-            .send()
-            .await?;
+            .json(&request);
 
-        // let body = response.text().await?;
-        // println!("{:#?}", body);
-        // Ok(body)
+        let response = builder.send().await?;
 
         // Return response body
         match response.json::<Response>().await? {
             Response::Error { error } => Err(anyhow::anyhow!(error.message)),
             Response::Completion { choices, .. } => {
-                let content = choices[0].message.content.clone().unwrap();
+                let content = choices[0].reply.content.clone().unwrap();
                 Ok(content)
             }
         }
+    }
+
+    async fn stream<F>(&mut self, role: Role, message: &str, f: F) -> Result<()>
+    where
+        F: Fn(&str, What) + Send,
+    {
+        let request = Request {
+            messages: vec![Reply {
+                role: Some(role.to_string()),
+                content: Some(message.to_string()),
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            stream: true,
+            model: self.model.clone(),
+            ..Default::default()
+        };
+
+        let bearer_token = std::env::var("OPENAI_API_KEY")?;
+
+        // Make POST request
+        let builder = self
+            .client
+            .post(self.url.clone())
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", bearer_token))
+            .json(&request);
+
+        let mut text = String::new();
+
+        let mut es = EventSource::new(builder).unwrap();
+        while let Some(event) = es.next().await {
+            match event {
+                Ok(Event::Open) => {
+                    f("", What::Start);
+                }
+                Ok(Event::Message(message)) => {
+                    //println!("Message: {:#?}", message);
+                    let data_str = message.data.as_str();
+                    if data_str.contains("[DONE]") {
+                        f("", What::Done);
+                        es.close();
+                        return Ok(());
+                    } else {
+                        match serde_json::from_str::<Response>(data_str).unwrap() {
+                            Response::Error { error } => {
+                                //eprintln!("Error: {}", error.message);
+                                es.close();
+                                return Err(anyhow!(error.message));
+                            }
+                            Response::Completion { choices, .. } => {
+                                let choice = &choices[0];
+                                let content = choice.reply.content.clone();
+                                if content.is_some() {
+                                    let chunk = &content.unwrap();
+                                    // println!("{}", content.unwrap());
+                                    text.add_assign(chunk);
+                                    f(chunk.as_str(), What::Chunk);
+                                } else if choice.finish_reason.is_some() {
+                                    // FIXME: Interpret finish_reason
+                                    f("", What::Stop);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(error) => {
+                    //eprintln!("Error caught: {}", error);
+                    es.close();
+                    return Err(anyhow!(error.to_string()));
+                }
+            }
+        }
+
+        return Ok(());
     }
 }
