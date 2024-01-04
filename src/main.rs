@@ -34,6 +34,15 @@ struct Opts {
     stream: bool,
 }
 
+// TODO: Implement commands
+// enum Cmds {
+//     Exit,
+//     User,
+//     System,
+//     Context,
+//     Save,
+// }
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let opts = Opts::parse();
@@ -61,11 +70,17 @@ async fn main() -> Result<()> {
 
     // Loop through user input
     loop {
-        execute!(stdout, style::SetAttribute(style::Attribute::Reset))?;
-        let input = rl.readline("\n: ")?;
+        execute!(
+            stdout,
+            style::SetAttribute(style::Attribute::Reset),
+            cursor::EnableBlinking
+        )?;
+
+        let input = rl.readline("\n")?;
+
         if input == "/exit" || input == "/quit" {
             break;
-        } else {
+        } else if input.starts_with("/user") {
             writeln!(stdout, "")?;
             execute!(stdout, cursor::SavePosition)?;
 
