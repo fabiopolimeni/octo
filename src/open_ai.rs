@@ -1,6 +1,6 @@
 use crate::chat::{Chat, Role, What};
 
-use std::{collections::HashMap, ops::AddAssign};
+use std::collections::HashMap;
 
 use anyhow::{anyhow, Result};
 use reqwest::Client;
