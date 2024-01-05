@@ -322,8 +322,6 @@ impl Chat for OpenAI {
 
         // let result = format!("{:#?}", response);
         // let text = response.text().await?;
-        //println!("{:#?}", response.text().await?);
-
         //Ok(format!("{}\n{:?}", result, text))
 
         // Return response body
@@ -367,7 +365,7 @@ impl Chat for OpenAI {
             .header("Authorization", format!("Bearer {}", bearer_token))
             .json(&request);
 
-        let mut text = String::new();
+        // let mut text = String::new();
 
         let mut es = EventSource::new(builder).unwrap();
         while let Some(event) = es.next().await {
@@ -397,7 +395,7 @@ impl Chat for OpenAI {
                                 if content.is_some() {
                                     let chunk = &content.unwrap();
                                     // println!("{}", content.unwrap());
-                                    text.add_assign(chunk);
+                                    // text.add_assign(chunk);
                                     f(chunk.as_str(), What::Chunk);
                                 } else if choice.finish_reason.is_some() {
                                     // FIXME: Interpret finish_reason
