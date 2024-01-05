@@ -6,7 +6,6 @@ mod chat;
 mod open_ai;
 
 use crate::chat::Chat;
-use crate::open_ai::OpenAI;
 
 use crossterm::{
     cursor, execute,
@@ -14,13 +13,29 @@ use crossterm::{
     terminal,
 };
 
-use anyhow::Result;
-use clap::Parser;
+use anyhow::{anyhow, Result};
+use clap::{Parser, ValueEnum};
+
+#[derive(Clone, Debug, ValueEnum)]
+enum Provider {
+    OpenAI,
+    TogetherAI,
+    MistralAI,
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Opts {
-    /// URL service endpoint
+    /// Provider API to use
+    #[arg(value_enum)]
+    #[arg(default_value = "open-ai")]
+    provider: Provider,
+
+    /// API key, uses <PROVIDER>_API_KEY env var if not provided
+    #[arg(short, long)]
+    api_key: Option<String>,
+
+    /// URL provider endpoint
     #[arg(short, long)]
     url: Option<String>,
 
@@ -28,9 +43,9 @@ struct Opts {
     #[arg(short, long)]
     model: Option<String>,
 
-    /// Whether using streaming for a better UX
-    /// FIXME: This should exist or not, not being a boolean
+    /// Use streaming API for quicker responses
     #[arg(short, long)]
+    #[arg(default_value = "false")]
     stream: bool,
 }
 
@@ -54,12 +69,25 @@ async fn main() -> Result<()> {
     let mut rl = rustyline::DefaultEditor::new()?;
 
     // Instantiate the Chat implementation
-    let mut chat = OpenAI::new(
-        &opts
-            .url
-            .unwrap_or("https://api.openai.com/v1/chat/completions".to_string()),
-        &opts.model.unwrap_or("gpt-3.5-turbo".to_string()),
-    );
+    let mut chat = match &opts.provider {
+        Provider::OpenAI => open_ai::OpenAI::new(
+            &opts.api_key.unwrap_or(std::env::var("OPENAI_API_KEY")?),
+            &opts
+                .url
+                .unwrap_or("https://api.openai.com/v1/chat/completions".to_string()),
+            &opts.model.unwrap_or("gpt-3.5-turbo-1106".to_string()),
+        ),
+        Provider::TogetherAI => open_ai::OpenAI::new(
+            &opts.api_key.unwrap_or(std::env::var("TOGETHERAI_API_KEY")?),
+            &opts
+                .url
+                .unwrap_or("https://api.together.xyz/v1/completions".to_string()),
+            &opts
+                .model
+                .unwrap_or("mistralai/Mixtral-8x7B-Instruct-v0.1".to_string()),
+        ),
+        Provider::MistralAI => Err(anyhow!("Not implemented yet"))?,
+    };
 
     writeln!(
         stdout,
@@ -80,7 +108,7 @@ async fn main() -> Result<()> {
 
         if input == "/exit" || input == "/quit" {
             break;
-        } else if input.starts_with("/user") {
+        } else {
             writeln!(stdout, "")?;
             execute!(stdout, cursor::SavePosition)?;
 
@@ -88,7 +116,7 @@ async fn main() -> Result<()> {
             writeln!(stdout, "{}", "Thinking...".italic().blue())?;
 
             // Assume the worst, prepare terminal style for the error.
-            // Because we are not explicitelly handling errors, anything
+            // Because we are not explicitly handling errors, anything
             // caught after this point will be printed out in bold red.
             execute!(
                 stdout,

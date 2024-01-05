@@ -2,11 +2,19 @@
     "editor.fontSize": 14,
     "editor.tabSize": 4,
     "cSpell.words": [
+        "Cmds",
+        "crossterm",
         "logit",
         "logits",
         "logprob",
         "Logprobs",
+        "mistralai",
+        "Mixtral",
+        "Octo",
         "OPENAI",
-        "reqwest"
+        "readline",
+        "reqwest",
+        "rustyline",
+        "TOGETHERAI"
     ]
 }

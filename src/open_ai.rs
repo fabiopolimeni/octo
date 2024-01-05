@@ -54,22 +54,27 @@ struct ToolCall {
 
 #[derive(Deserialize, Debug)]
 struct Choice {
-    index: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    index: Option<i64>,
 
     #[serde(alias = "delta")]
     #[serde(alias = "message")]
-    reply: Reply,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply: Option<Data>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     logprobs: Option<Logprobs>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     finish_reason: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-struct Reply {
-    /// The role of the messages author
+struct Data {
+    /// The role of the author
     #[serde(skip_serializing_if = "Option::is_none")]
     role: Option<String>,
 
@@ -149,7 +154,7 @@ struct ResponseFormat {
 #[derive(Deserialize, Serialize, Debug)]
 struct Request {
     /// A list of messages comprising the conversation so far
-    messages: Vec<Reply>,
+    messages: Vec<Data>,
 
     /// The ID of the model to use for completion
     model: String,
@@ -273,15 +278,17 @@ impl Default for Request {
 
 pub struct OpenAI {
     client: Client,
+    api_key: String,
     url: reqwest::Url,
     model: String,
 }
 
 impl OpenAI {
-    pub fn new(url: &str, model: &str) -> Self {
+    pub fn new(api_key: &str, url: &str, model: &str) -> Self {
         let client = Client::new();
         OpenAI {
-            client,
+            api_key: api_key.to_string(),
+            client: client,
             url: url.parse().unwrap(),
             model: model.to_string(),
         }
@@ -292,7 +299,7 @@ impl OpenAI {
 impl Chat for OpenAI {
     async fn message(&mut self, role: Role, message: &str) -> Result<String> {
         let request = Request {
-            messages: vec![Reply {
+            messages: vec![Data {
                 role: Some(role.to_string().to_lowercase()),
                 content: Some(message.to_string()),
                 name: None,
@@ -303,25 +310,33 @@ impl Chat for OpenAI {
             ..Default::default()
         };
 
-        let bearer_token = std::env::var("OPENAI_API_KEY")?;
-
         // Make POST request
         let builder = self
             .client
             .post(self.url.clone())
             .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", bearer_token))
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&request);
 
         let response = builder.send().await?;
 
+        // let result = format!("{:#?}", response);
+        // let text = response.text().await?;
+        //println!("{:#?}", response.text().await?);
+
+        //Ok(format!("{}\n{:?}", result, text))
+
         // Return response body
         match response.json::<Response>().await? {
-            Response::Error { error } => Err(anyhow::anyhow!(error.message)),
-            Response::Completion { choices, .. } => {
-                let content = choices[0].reply.content.clone().unwrap();
-                Ok(content)
-            }
+            Response::Error { error } => Err(anyhow!(error.message)),
+            Response::Completion { choices, .. } => match choices[0].reply {
+                // Need to check whether content (OpenAI), or text (TogetherAI), field is present
+                Some(ref reply) => Ok(reply.content.clone().unwrap()),
+                None => match choices[0].text {
+                    Some(ref text) => Ok(text.clone()),
+                    None => Err(anyhow!("No content, or text, field in response")),
+                },
+            },
         }
     }
 
@@ -330,7 +345,7 @@ impl Chat for OpenAI {
         F: Fn(&str, What) + Send,
     {
         let request = Request {
-            messages: vec![Reply {
+            messages: vec![Data {
                 role: Some(role.to_string()),
                 content: Some(message.to_string()),
                 name: None,
@@ -361,7 +376,7 @@ impl Chat for OpenAI {
                     f("", What::Start);
                 }
                 Ok(Event::Message(message)) => {
-                    //println!("Message: {:#?}", message);
+                    // println!("Message: {:#?}", message);
                     let data_str = message.data.as_str();
                     if data_str.contains("[DONE]") {
                         f("", What::Done);
@@ -370,13 +385,15 @@ impl Chat for OpenAI {
                     } else {
                         match serde_json::from_str::<Response>(data_str).unwrap() {
                             Response::Error { error } => {
-                                //eprintln!("Error: {}", error.message);
+                                //eprintln!("Error caught: {}", error.message);
                                 es.close();
                                 return Err(anyhow!(error.message));
                             }
                             Response::Completion { choices, .. } => {
                                 let choice = &choices[0];
-                                let content = choice.reply.content.clone();
+                                let reply = &choice.reply.as_ref().unwrap();
+
+                                let content = reply.content.clone();
                                 if content.is_some() {
                                     let chunk = &content.unwrap();
                                     // println!("{}", content.unwrap());
