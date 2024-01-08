@@ -20,7 +20,7 @@ impl fmt::Display for Role {
     }
 }
 
-pub enum What {
+pub enum StreamState {
     Start,
     Stop,
     Chunk,
@@ -30,16 +30,16 @@ pub enum What {
     Done,
 }
 
-impl fmt::Display for What {
+impl fmt::Display for StreamState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            What::Start => write!(f, "start"),
-            What::Stop => write!(f, "stopped"),
-            What::Chunk => write!(f, "chunk"),
-            What::OutOfCharacters => write!(f, "length"),
-            What::ContentFilter => write!(f, "content_filter"),
-            What::ToolCalls => write!(f, "tool_calls"),
-            What::Done => write!(f, "done"),
+            StreamState::Start => write!(f, "start"),
+            StreamState::Stop => write!(f, "stop"),
+            StreamState::Chunk => write!(f, "chunk"),
+            StreamState::OutOfCharacters => write!(f, "length"),
+            StreamState::ContentFilter => write!(f, "content_filter"),
+            StreamState::ToolCalls => write!(f, "tool_calls"),
+            StreamState::Done => write!(f, "done"),
         }
     }
 }
@@ -49,5 +49,5 @@ pub trait Chat {
     async fn message(&mut self, role: Role, message: &str) -> Result<String>;
     async fn stream<F>(&mut self, role: Role, message: &str, f: F) -> Result<()>
     where
-        F: Fn(&str, What) + Send;
+        F: Fn(&str, StreamState) + Send;
 }

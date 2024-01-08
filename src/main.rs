@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
     // Create a new 'readline' instance
     let mut rl = rustyline::DefaultEditor::new()?;
 
-    // Instantiate the Chat implementation
+    // Initiate chat completion
     let mut chat = match &opts.provider {
         Provider::OpenAI => open_ai::OpenAI::new(
             &opts.api_key.unwrap_or(std::env::var("OPENAI_API_KEY")?),
@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
             // FIXME: Using animated waiting
             writeln!(stdout, "{}", "Thinking...".italic().blue())?;
 
-            // Assume the worst, prepare terminal style for the error.
+            // Assume the worst, prepare terminal style for errors.
             // Because we are not explicitly handling errors, anything
             // caught after this point will be printed out in bold red.
             execute!(
@@ -128,7 +128,8 @@ async fn main() -> Result<()> {
                 let _ = chat
                     .stream(chat::Role::User, &input, |chunk, what| {
                         match what {
-                            chat::What::Start => {
+                            chat::StreamState::Start => {
+                                // No errors, reset terminal style to print out the response message
                                 execute!(
                                     &stdout,
                                     cursor::RestorePosition,
@@ -137,14 +138,14 @@ async fn main() -> Result<()> {
                                 )
                                 .unwrap();
                             }
-                            chat::What::Chunk => {
+                            chat::StreamState::Chunk => {
                                 // Append text response
                                 write!(&stdout, "{}", chunk.italic().blue()).unwrap();
 
                                 // Flush stdout after each chunk.
                                 io::stdout().flush().unwrap();
                             }
-                            chat::What::Stop => {
+                            chat::StreamState::Stop => {
                                 writeln!(&stdout, "").unwrap();
                             }
                             _ => {}

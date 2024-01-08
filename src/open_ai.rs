@@ -1,4 +1,4 @@
-use crate::chat::{Chat, Role, What};
+use crate::chat::{Chat, Role, StreamState};
 
 use std::collections::HashMap;
 
@@ -340,7 +340,7 @@ impl Chat for OpenAI {
 
     async fn stream<F>(&mut self, role: Role, message: &str, f: F) -> Result<()>
     where
-        F: Fn(&str, What) + Send,
+        F: Fn(&str, StreamState) + Send,
     {
         let request = Request {
             messages: vec![Data {
@@ -371,13 +371,13 @@ impl Chat for OpenAI {
         while let Some(event) = es.next().await {
             match event {
                 Ok(Event::Open) => {
-                    f("", What::Start);
+                    f("", StreamState::Start);
                 }
                 Ok(Event::Message(message)) => {
                     // println!("Message: {:#?}", message);
                     let data_str = message.data.as_str();
                     if data_str.contains("[DONE]") {
-                        f("", What::Done);
+                        f("", StreamState::Done);
                         es.close();
                         return Ok(());
                     } else {
@@ -396,10 +396,10 @@ impl Chat for OpenAI {
                                     let chunk = &content.unwrap();
                                     // println!("{}", content.unwrap());
                                     // text.add_assign(chunk);
-                                    f(chunk.as_str(), What::Chunk);
+                                    f(chunk.as_str(), StreamState::Chunk);
                                 } else if choice.finish_reason.is_some() {
                                     // FIXME: Interpret finish_reason
-                                    f("", What::Stop);
+                                    f("", StreamState::Stop);
                                 }
                             }
                         }
