@@ -3,9 +3,9 @@
 use std::io::{self, Write};
 
 mod chat;
-mod open_ai;
+mod conversation;
 
-use crate::chat::Chat;
+use crate::conversation::{Conversation, Role, State};
 
 use crossterm::{
     cursor, execute,
@@ -21,6 +21,7 @@ enum Provider {
     OpenAI,
     TogetherAI,
     MistralAI,
+    Gemini,
 }
 
 #[derive(Parser, Debug)]
@@ -49,13 +50,14 @@ struct Opts {
     stream: bool,
 }
 
-// TODO: Implement commands
+// TODO - Implement commands
 // enum Cmds {
 //     Exit,
 //     User,
 //     System,
 //     Context,
 //     Save,
+//     Load,
 // }
 
 #[tokio::main]
@@ -70,23 +72,33 @@ async fn main() -> Result<()> {
 
     // Initiate chat completion
     let mut chat = match &opts.provider {
-        Provider::OpenAI => open_ai::OpenAI::new(
+        Provider::OpenAI => chat::Chat::new(
             &opts.api_key.unwrap_or(std::env::var("OPENAI_API_KEY")?),
             &opts
                 .url
                 .unwrap_or("https://api.openai.com/v1/chat/completions".to_string()),
             &opts.model.unwrap_or("gpt-3.5-turbo-1106".to_string()),
+            &chat::Settings::default(),
         ),
-        Provider::TogetherAI => open_ai::OpenAI::new(
+        Provider::TogetherAI => chat::Chat::new(
             &opts.api_key.unwrap_or(std::env::var("TOGETHERAI_API_KEY")?),
             &opts
                 .url
-                .unwrap_or("https://api.together.xyz/v1/completions".to_string()),
+                .unwrap_or("https://api.together.xyz/v1/chat/completions".to_string()),
             &opts
                 .model
                 .unwrap_or("mistralai/Mixtral-8x7B-Instruct-v0.1".to_string()),
+            &chat::Settings::default(),
         ),
-        Provider::MistralAI => Err(anyhow!("Not implemented yet"))?,
+        Provider::MistralAI => chat::Chat::new(
+            &opts.api_key.unwrap_or(std::env::var("MISTRALAI_API_KEY")?),
+            &opts
+                .url
+                .unwrap_or("https://api.mistral.ai/v1/chat/completions".to_string()),
+            &opts.model.unwrap_or("mistral-medium".to_string()),
+            &chat::Settings::default(),
+        ),
+        Provider::Gemini => Err(anyhow!("Gemini provider not implemented yet!"))?,
     };
 
     writeln!(
@@ -112,60 +124,47 @@ async fn main() -> Result<()> {
             writeln!(stdout, "")?;
             execute!(stdout, cursor::SavePosition)?;
 
-            // FIXME: Using animated waiting
+            // FIXME - Using animated waiting
             writeln!(stdout, "{}", "Thinking...".italic().blue())?;
 
             // Assume the worst, prepare terminal style for errors.
-            // Because we are not explicitly handling errors, anything
-            // caught after this point will be printed out in bold red.
+            // We are not handling errors, jut bubble them up, therefore,
+            // anything caught after this point will be printed out in bold
+            // red, but it is handled.
             execute!(
                 stdout,
                 style::SetAttribute(style::Attribute::Bold),
                 style::SetForegroundColor(style::Color::Red)
             )?;
 
-            if opts.stream {
-                let _ = chat
-                    .stream(chat::Role::User, &input, |chunk, what| {
-                        match what {
-                            chat::StreamState::Start => {
-                                // No errors, reset terminal style to print out the response message
-                                execute!(
-                                    &stdout,
-                                    cursor::RestorePosition,
-                                    terminal::Clear(terminal::ClearType::FromCursorDown),
-                                    style::SetAttribute(style::Attribute::Reset)
-                                )
-                                .unwrap();
-                            }
-                            chat::StreamState::Chunk => {
-                                // Append text response
-                                write!(&stdout, "{}", chunk.italic().blue()).unwrap();
-
-                                // Flush stdout after each chunk.
-                                io::stdout().flush().unwrap();
-                            }
-                            chat::StreamState::Stop => {
-                                writeln!(&stdout, "").unwrap();
-                            }
-                            _ => {}
+            let _ = chat
+                .build(Role::User, &input)
+                .execute(|chunk, what| {
+                    match what {
+                        State::Start => {
+                            // No errors, reset terminal style to print out the response message
+                            execute!(
+                                &stdout,
+                                cursor::RestorePosition,
+                                terminal::Clear(terminal::ClearType::FromCursorDown),
+                                style::SetAttribute(style::Attribute::Reset)
+                            )
+                            .unwrap();
                         }
-                    })
-                    .await?;
-            } else {
-                let response = chat.message(chat::Role::User, &input).await?;
+                        State::Message => {
+                            // Append text response
+                            write!(&stdout, "{}", chunk.italic().blue()).unwrap();
 
-                // No errors, reset terminal style to print out the response message
-                execute!(
-                    stdout,
-                    cursor::RestorePosition,
-                    terminal::Clear(terminal::ClearType::FromCursorDown),
-                    style::SetAttribute(style::Attribute::Reset)
-                )?;
-
-                // Print out the response
-                writeln!(stdout, "\n{}\n", response.italic().blue())?;
-            }
+                            // Flush stdout after each chunk.
+                            io::stdout().flush().unwrap();
+                        }
+                        State::Stop => {
+                            writeln!(&stdout, "").unwrap();
+                        }
+                        _ => {}
+                    }
+                })
+                .await?;
         }
     }
 
