@@ -11,7 +11,7 @@ pub enum Role {
 
 impl fmt::Display for Role {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
+        match self {
             Role::System => write!(f, "system"),
             Role::Assistant => write!(f, "assistant"),
             Role::User => write!(f, "user"),
@@ -23,7 +23,7 @@ impl fmt::Display for Role {
 pub enum State {
     Start,
     Stop,
-    Message,
+    Message(String),
     OutOfCharacters,
     ContentFilter,
     ToolCalls,
@@ -32,10 +32,10 @@ pub enum State {
 
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
+        match self {
             State::Start => write!(f, "start"),
             State::Stop => write!(f, "stop"),
-            State::Message => write!(f, "message"),
+            State::Message(msg) => write!(f, "message: {}", msg),
             State::OutOfCharacters => write!(f, "length"),
             State::ContentFilter => write!(f, "content_filter"),
             State::ToolCalls => write!(f, "tool_calls"),
@@ -49,5 +49,5 @@ pub trait Conversation {
     fn build(&mut self, role: Role, message: &str) -> &mut Self;
     async fn execute<F>(&mut self, f: F) -> Result<()>
     where
-        F: Fn(&str, State) + Send;
+        F: Fn(State) + Send;
 }

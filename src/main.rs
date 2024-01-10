@@ -139,8 +139,8 @@ async fn main() -> Result<()> {
 
             let _ = chat
                 .build(Role::User, &input)
-                .execute(|chunk, what| {
-                    match what {
+                .execute(|state| {
+                    match state {
                         State::Start => {
                             // No errors, reset terminal style to print out the response message
                             execute!(
@@ -151,9 +151,9 @@ async fn main() -> Result<()> {
                             )
                             .unwrap();
                         }
-                        State::Message => {
+                        State::Message(text) => {
                             // Append text response
-                            write!(&stdout, "{}", chunk.italic().blue()).unwrap();
+                            write!(&stdout, "{}", text.italic().blue()).unwrap();
 
                             // Flush stdout after each chunk.
                             io::stdout().flush().unwrap();

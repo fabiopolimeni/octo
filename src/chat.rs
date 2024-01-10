@@ -335,7 +335,7 @@ impl Conversation for Chat {
 
     async fn execute<F>(&mut self, f: F) -> Result<()>
     where
-        F: Fn(&str, State) + Send,
+        F: Fn(State) + Send,
     {
         // FIXME - We may pass all request fields by ref, instead of copying
         // all values, as this object will be serialized and sent through
@@ -366,13 +366,13 @@ impl Conversation for Chat {
         while let Some(event) = es.next().await {
             match event {
                 Ok(Event::Open) => {
-                    f("", State::Start);
+                    f(State::Start);
                 }
                 Ok(Event::Message(message)) => {
                     // println!("Message: {:#?}", message);
                     let data_str = message.data.as_str();
                     if data_str.contains("[DONE]") {
-                        f("", State::Done);
+                        f(State::Done);
                         es.close();
                         return Ok(());
                     } else {
@@ -394,10 +394,10 @@ impl Conversation for Chat {
                                     // println!("{}", content.unwrap());
                                     text.add_assign(chunk);
 
-                                    f(chunk.as_str(), State::Message);
+                                    f(State::Message(chunk.clone()));
                                 } else if choice.finish_reason.is_some() {
                                     // FIXME - Interpret finish_reason
-                                    f("", State::Stop);
+                                    f(State::Stop);
                                 }
                             }
                         }
