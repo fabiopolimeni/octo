@@ -16,5 +16,6 @@
         "reqwest",
         "rustyline",
         "TOGETHERAI"
-    ]
+    ],
+    "rust-analyzer.check.command": "clippy"
 }

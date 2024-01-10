@@ -28,8 +28,7 @@ enum Provider {
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Opts {
     /// Provider API to use
-    #[arg(value_enum)]
-    #[arg(default_value = "open-ai")]
+    #[arg(value_enum, default_value = "open-ai")]
     provider: Provider,
 
     /// API key, uses <PROVIDER>_API_KEY env var if not provided
@@ -45,9 +44,22 @@ struct Opts {
     model: Option<String>,
 
     /// Use streaming API for quicker responses
-    #[arg(short, long)]
-    #[arg(default_value = "false")]
+    #[arg(short, long, default_value = "false")]
     stream: bool,
+
+    /// What sampling temperature to use, between 0 and 2. Higher values like 0.8 will make
+    /// the output more random, while lower values like 0.2 will make it more focused and
+    /// deterministic
+    #[arg(short, long, default_value = "0.8", num_args = 0..2)]
+    temperature: f64,
+
+    /// The maximum number of tokens to generate
+    #[arg(short = 'r', long, default_value = "512")]
+    max_tokens: i64,
+
+    /// If specified, the system will make a best effort to sample deterministically
+    #[arg(short = 'c', long)]
+    seed: Option<i64>,
 }
 
 // TODO - Implement commands
@@ -64,6 +76,13 @@ struct Opts {
 async fn main() -> Result<()> {
     let opts = Opts::parse();
 
+    let settings = chat::Settings {
+        stream: opts.stream,
+        temperature: opts.temperature,
+        max_tokens: opts.max_tokens,
+        seed: opts.seed,
+    };
+
     // Initialize term instance
     let mut stdout = io::stdout();
 
@@ -78,7 +97,7 @@ async fn main() -> Result<()> {
                 .url
                 .unwrap_or("https://api.openai.com/v1/chat/completions".to_string()),
             &opts.model.unwrap_or("gpt-3.5-turbo-1106".to_string()),
-            &chat::Settings::default(),
+            &settings,
         ),
         Provider::TogetherAI => chat::Chat::new(
             &opts.api_key.unwrap_or(std::env::var("TOGETHERAI_API_KEY")?),
@@ -88,7 +107,7 @@ async fn main() -> Result<()> {
             &opts
                 .model
                 .unwrap_or("mistralai/Mixtral-8x7B-Instruct-v0.1".to_string()),
-            &chat::Settings::default(),
+            &settings,
         ),
         Provider::MistralAI => chat::Chat::new(
             &opts.api_key.unwrap_or(std::env::var("MISTRALAI_API_KEY")?),
@@ -96,7 +115,7 @@ async fn main() -> Result<()> {
                 .url
                 .unwrap_or("https://api.mistral.ai/v1/chat/completions".to_string()),
             &opts.model.unwrap_or("mistral-medium".to_string()),
-            &chat::Settings::default(),
+            &settings,
         ),
         Provider::Gemini => Err(anyhow!("Gemini provider not implemented yet!"))?,
     };
@@ -116,6 +135,7 @@ async fn main() -> Result<()> {
             cursor::EnableBlinking
         )?;
 
+        // FIXME - Add auto corrector
         let input = rl.readline("\n")?.trim().to_string().to_owned();
 
         if input == "/exit" || input == "/quit" {
@@ -153,7 +173,7 @@ async fn main() -> Result<()> {
                         }
                         State::Message(text) => {
                             // Append text response
-                            write!(&stdout, "{}", text.italic().blue()).unwrap();
+                            write!(&stdout, "{}", text.as_str().italic().blue()).unwrap();
 
                             // Flush stdout after each chunk.
                             io::stdout().flush().unwrap();

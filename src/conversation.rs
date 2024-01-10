@@ -20,17 +20,17 @@ impl fmt::Display for Role {
     }
 }
 
-pub enum State {
+pub enum State<'a> {
     Start,
     Stop,
-    Message(String),
+    Message(&'a String),
     OutOfCharacters,
     ContentFilter,
     ToolCalls,
     Done,
 }
 
-impl fmt::Display for State {
+impl<'a> fmt::Display for State<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             State::Start => write!(f, "start"),

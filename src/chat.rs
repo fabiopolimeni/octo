@@ -6,7 +6,6 @@ use anyhow::{anyhow, Result};
 use reqwest::Client;
 use reqwest_eventsource::{Event, EventSource};
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 use async_trait::async_trait;
 use tokio_stream::StreamExt;
@@ -279,10 +278,10 @@ impl Default for Request {
 
 #[derive(Debug, Clone)]
 pub struct Settings {
-    temperature: f64,
-    max_tokens: i64,
-    seed: Option<i64>,
-    stream: bool,
+    pub temperature: f64,
+    pub max_tokens: i64,
+    pub seed: Option<i64>,
+    pub stream: bool,
 }
 
 impl Default for Settings {
@@ -309,7 +308,7 @@ impl Chat {
     pub fn new(api_key: &str, url: &str, model: &str, settings: &Settings) -> Self {
         let client = Client::new();
         Chat {
-            client: client,
+            client,
             api_key: api_key.to_string(),
             url: url.parse().unwrap(),
             model: model.to_string(),
@@ -372,10 +371,21 @@ impl Conversation for Chat {
                     // println!("Message: {:#?}", message);
                     let data_str = message.data.as_str();
                     if data_str.contains("[DONE]") {
+                        let msg = text.clone();
+
                         // When we are done, we send the text to the user, if stream is false
                         if !self.settings.stream {
-                            f(State::Message(text.clone()));
+                            f(State::Message(&msg));
                         }
+
+                        // Add response to the history
+                        self.history.push(Data {
+                            role: Some(Role::Assistant.to_string()),
+                            content: Some(msg),
+                            name: None,
+                            tool_calls: None,
+                            tool_call_id: None,
+                        });
 
                         f(State::Done);
                         es.close();
@@ -401,7 +411,7 @@ impl Conversation for Chat {
 
                                     // Only send message chunks if we are streaming
                                     if self.settings.stream {
-                                        f(State::Message(chunk.clone()));
+                                        f(State::Message(chunk));
                                     }
                                 } else if choice.finish_reason.is_some() {
                                     // FIXME - Interpret finish_reason
@@ -420,5 +430,40 @@ impl Conversation for Chat {
         }
 
         return Ok(());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_chat_request() {
+        vec![
+            Data {
+                role: Some(Role::User.to_string()),
+                content: Some("Hello".to_string()),
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            Data {
+                role: Some(Role::User.to_string()),
+                content: Some("How are you?".to_string()),
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
+        ];
+        let model = "gpt-3.5-turbo";
+        let url = "https://api.openai.com/v1/engines/davinci-codex/completions";
+        let api_key = "YOUR_API_KEY";
+        let settings = Settings::default();
+
+        let mut chat = Chat::new(api_key, url, model, &settings);
+
+        let result = chat.execute(|_| {}).await;
+
+        assert!(result.is_err(), "{result:?}");
     }
 }
