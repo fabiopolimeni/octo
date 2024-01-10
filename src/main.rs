@@ -141,7 +141,7 @@ async fn main() -> Result<()> {
         if input == "/exit" || input == "/quit" {
             break;
         } else {
-            writeln!(stdout, "")?;
+            writeln!(stdout)?;
             execute!(stdout, cursor::SavePosition)?;
 
             // FIXME - Using animated waiting
@@ -157,8 +157,7 @@ async fn main() -> Result<()> {
                 style::SetForegroundColor(style::Color::Red)
             )?;
 
-            let _ = chat
-                .build(Role::User, &input)
+            chat.build(Role::User, &input)
                 .execute(|state| {
                     match state {
                         State::Start => {
@@ -179,7 +178,7 @@ async fn main() -> Result<()> {
                             io::stdout().flush().unwrap();
                         }
                         State::Stop | State::Done => {
-                            writeln!(&stdout, "").unwrap();
+                            writeln!(&stdout).unwrap();
                         }
                         _ => {}
                     }
