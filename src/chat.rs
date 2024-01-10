@@ -372,6 +372,11 @@ impl Conversation for Chat {
                     // println!("Message: {:#?}", message);
                     let data_str = message.data.as_str();
                     if data_str.contains("[DONE]") {
+                        // When we are done, we send the text to the user, if stream is false
+                        if !self.settings.stream {
+                            f(State::Message(text.clone()));
+                        }
+
                         f(State::Done);
                         es.close();
                         return Ok(());
@@ -394,7 +399,10 @@ impl Conversation for Chat {
                                     // println!("{}", content.unwrap());
                                     text.add_assign(chunk);
 
-                                    f(State::Message(chunk.clone()));
+                                    // Only send message chunks if we are streaming
+                                    if self.settings.stream {
+                                        f(State::Message(chunk.clone()));
+                                    }
                                 } else if choice.finish_reason.is_some() {
                                     // FIXME - Interpret finish_reason
                                     f(State::Stop);

@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
             cursor::EnableBlinking
         )?;
 
-        let input = rl.readline("\n")?;
+        let input = rl.readline("\n")?.trim().to_string().to_owned();
 
         if input == "/exit" || input == "/quit" {
             break;
@@ -158,7 +158,7 @@ async fn main() -> Result<()> {
                             // Flush stdout after each chunk.
                             io::stdout().flush().unwrap();
                         }
-                        State::Stop => {
+                        State::Stop | State::Done => {
                             writeln!(&stdout, "").unwrap();
                         }
                         _ => {}
