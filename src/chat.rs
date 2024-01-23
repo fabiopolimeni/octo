@@ -419,7 +419,6 @@ impl Conversation for Chat {
                             Response::Completion { choices, .. } => {
                                 let choice = &choices[0];
 
-                                // NOTE - Does this fail if not OpenAI?
                                 let reply = choice.reply.as_ref().unwrap();
 
                                 if reply.content.is_some() {
@@ -428,7 +427,7 @@ impl Conversation for Chat {
                                     // println!("{}", content.unwrap());
                                     text.add_assign(chunk);
 
-                                    // Only send message chunks if we are streaming
+                                    // Only send message chunks if the user requested stream
                                     if self.settings.stream {
                                         f(State::Message(chunk));
                                     }
