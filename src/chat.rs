@@ -103,6 +103,14 @@ struct Usage {
 }
 
 #[derive(Deserialize, Debug)]
+struct Token {
+    id: i64,
+    text: String,
+    logprob: f64,
+    special: bool,
+}
+
+#[derive(Deserialize, Debug)]
 struct ErrorObject {
     message: String,
 
@@ -126,14 +134,25 @@ enum Response {
         id: String,
         object: String,
         created: i64,
-        model: String,
         choices: Vec<Choice>,
+
+        #[serde(skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
 
         #[serde(skip_serializing_if = "Option::is_none")]
         usage: Option<Usage>,
 
         #[serde(skip_serializing_if = "Option::is_none")]
         system_fingerprint: Option<String>,
+
+        #[serde(skip_serializing_if = "Option::is_none")]
+        generated_text: Option<String>,
+
+        #[serde(skip_serializing_if = "Option::is_none")]
+        stats: Option<HashMap<String, i64>>,
+
+        #[serde(skip_serializing_if = "Option::is_none")]
+        token: Option<Token>,
     },
 }
 
@@ -332,7 +351,7 @@ impl Conversation for Chat {
         self
     }
 
-    async fn execute<F>(&mut self, f: F) -> Result<()>
+    async fn send<F>(&mut self, f: F) -> Result<()>
     where
         F: Fn(State) + Send,
     {
@@ -368,12 +387,12 @@ impl Conversation for Chat {
                     f(State::Start);
                 }
                 Ok(Event::Message(message)) => {
-                    // println!("Message: {:#?}", message);
+                    //println!("Message: {:#?}", message);
                     let data_str = message.data.as_str();
                     if data_str.contains("[DONE]") {
                         let msg = text.clone();
 
-                        // When we are done, we send the text to the user, if stream is false
+                        // When we are done, send the text to the user, if stream is false
                         if !self.settings.stream {
                             f(State::Message(&msg));
                         }
@@ -391,7 +410,7 @@ impl Conversation for Chat {
                         es.close();
                         return Ok(());
                     } else {
-                        match serde_json::from_str::<Response>(data_str).unwrap() {
+                        match serde_json::from_str::<Response>(data_str)? {
                             Response::Error { error } => {
                                 //eprintln!("Error caught: {}", error.message);
                                 es.close();
@@ -462,7 +481,7 @@ mod tests {
 
         let mut chat = Chat::new(api_key, url, model, &settings);
 
-        let result = chat.execute(|_| {}).await;
+        let result = chat.send(|_| {}).await;
 
         assert!(result.is_err(), "{result:?}");
     }

@@ -47,7 +47,7 @@ impl<'a> fmt::Display for State<'a> {
 #[async_trait]
 pub trait Conversation {
     fn build(&mut self, role: Role, message: &str) -> &mut Self;
-    async fn execute<F>(&mut self, f: F) -> Result<()>
+    async fn send<F>(&mut self, f: F) -> Result<()>
     where
         F: Fn(State) + Send;
 }

@@ -147,10 +147,10 @@ async fn main() -> Result<()> {
             // FIXME - Using animated waiting
             writeln!(stdout, "{}", "Thinking...".italic().blue())?;
 
-            // Assume the worst, prepare terminal style for errors.
-            // We are not handling errors, jut bubble them up, therefore,
-            // anything caught after this point will be printed out in bold
-            // red, but it is handled.
+            // We are not handling errors, instead we are just bubbling them up.
+            // Therefore, anything caught after this point will be printed in
+            // whatever style we set here.
+            // Assume the worst, prepare the terminal style for errors.
             execute!(
                 stdout,
                 style::SetAttribute(style::Attribute::Bold),
@@ -158,10 +158,10 @@ async fn main() -> Result<()> {
             )?;
 
             chat.build(Role::User, &input)
-                .execute(|state| {
+                .send(|state| {
                     match state {
                         State::Start => {
-                            // No errors, reset terminal style to print out the response message
+                            // No errors; reset the terminal style to print out the response message
                             execute!(
                                 &stdout,
                                 cursor::RestorePosition,
@@ -174,7 +174,7 @@ async fn main() -> Result<()> {
                             // Append text response
                             write!(&stdout, "{}", text.as_str().italic().blue()).unwrap();
 
-                            // Flush stdout after each chunk.
+                            // Flush stdout after each chunk for a typewriter effect
                             io::stdout().flush().unwrap();
                         }
                         State::Stop | State::Done => {
